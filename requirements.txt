@@ -1,4 +1,6 @@
-opencv-python-headless
 streamlit
-streamlit-webrtc
+opencv-python-headless
+pyzbar
+pillow
+numpy
 requests
