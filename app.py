@@ -1,68 +1,51 @@
 import streamlit as st
 import cv2
-from pyzbar.pyzbar import decode
+from qreader import QReader
 import numpy as np
 from PIL import Image
 import requests
 
-# Kiểm tra xem pyzbar đã được cài đặt chưa
-try:
-    from pyzbar.pyzbar import decode
-except ImportError:
-    st.error("⚠️ Chưa cài đặt pyzbar. Vui lòng cài đặt theo hướng dẫn bên dưới.")
-    st.code("pip install pyzbar")
-    st.stop()
-
 def main():
     st.title("📷 Quét QR Code để tra cứu thông tin")
     
-    # Tạo file uploader cho phép upload ảnh
+    # Khởi tạo QReader
+    qreader = QReader()
+
+    # Tạo file uploader để người dùng có thể tải lên ảnh
     uploaded_file = st.file_uploader("Tải lên ảnh chứa mã QR", type=['jpg', 'jpeg', 'png'])
     
-    # Xử lý camera
-    camera_on = st.checkbox('Bật Camera')
-    
-    if camera_on:
+    # Tạo camera capture
+    if st.button("Sử dụng Camera"):
         cap = cv2.VideoCapture(0)
         frame_placeholder = st.empty()
+        stop_button_pressed = st.button("Dừng Camera")
         
-        while cap.isOpened():
+        while cap.isOpened() and not stop_button_pressed:
             ret, frame = cap.read()
-            if not ret:
-                st.error("Không thể kết nối camera!")
-                break
+            if ret:
+                # Quét QR code
+                decoded_text = qreader.detect_and_decode(image=frame)
                 
-            # Chuyển frame thành grayscale
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            
-            # Quét QR code
-            qr_codes = decode(gray)
-            
-            # Vẽ khung và hiển thị mã QR
-            for qr in qr_codes:
-                # Vẽ đường viền
-                points = qr.polygon
-                if len(points) > 4:
-                    hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
-                    points = hull
+                if decoded_text:
+                    # Vẽ khung xung quanh QR code
+                    bboxes = qreader.detect(frame)
+                    if bboxes is not None:
+                        for bbox in bboxes:
+                            points = bbox.astype(np.int32)
+                            cv2.polylines(frame, [points], True, (0, 255, 0), 3)
+                            
+                            # Hiển thị dữ liệu
+                            cv2.putText(frame, decoded_text[0], (points[0][0], points[0][1] - 10),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    
+                    # Lưu kết quả và dừng camera
+                    st.session_state['qr_result'] = decoded_text[0]
+                    cap.release()
+                    return
                 
-                points = np.array(points, np.int32)
-                points = points.reshape((-1, 1, 2))
-                cv2.polylines(frame, [points], True, (0, 255, 0), 3)
-                
-                # Hiển thị dữ liệu
-                qr_data = qr.data.decode('utf-8')
-                cv2.putText(frame, qr_data, (qr.rect.left, qr.rect.top - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-                # Lưu kết quả
-                st.session_state['qr_result'] = qr_data
-                cap.release()
-                return
-            
-            # Hiển thị frame
-            frame_placeholder.image(frame, channels="BGR")
-            
+                # Hiển thị frame
+                frame_placeholder.image(frame, channels="BGR")
+        
         cap.release()
 
     # Xử lý ảnh được tải lên
@@ -71,18 +54,13 @@ def main():
         image_np = np.array(image)
         
         # Quét QR code từ ảnh
-        qr_codes = decode(image_np)
+        decoded_text = qreader.detect_and_decode(image=image_np)
         
-        if qr_codes:
-            for qr in qr_codes:
-                qr_data = qr.data.decode('utf-8')
-                st.session_state['qr_result'] = qr_data
-                break
-            
-            # Hiển thị ảnh với khung QR
-            st.image(image, caption='Ảnh đã tải lên')
-        else:
-            st.warning("Không tìm thấy mã QR trong ảnh!")
+        if decoded_text:
+            st.session_state['qr_result'] = decoded_text[0]
+        
+        # Hiển thị ảnh
+        st.image(image, caption='Ảnh đã tải lên')
 
     # Hiển thị kết quả quét
     if 'qr_result' in st.session_state:
