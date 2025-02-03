@@ -1,7 +1,7 @@
-streamlit
 opencv-python-headless
-pyzbar
-pillow
-numpy
-requests
 qreader
+pillow
+requests
+numpy
+streamlit
+libgl1
